@@ -58,6 +58,36 @@ function normalizeCreatedActivity(activity) {
   };
 }
 
+function readLocalCreatedActivities() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.createdActivities);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeCreatedActivity) : [];
+  } catch (error) {
+    console.warn('[OFF SITE] Could not read local created activities:', error);
+    return [];
+  }
+}
+
+function mergeCreatedActivities(cloudActivities, localActivities) {
+  const mergedById = new Map();
+  const cloudList = Array.isArray(cloudActivities) ? cloudActivities : [];
+  const localList = Array.isArray(localActivities) ? localActivities : [];
+
+  // Start with local so users always keep what they created on this browser.
+  localList.forEach(activity => {
+    if (activity && activity.id != null) mergedById.set(String(activity.id), normalizeCreatedActivity(activity));
+  });
+
+  // Cloud overwrites local for same id, and adds remote activities.
+  cloudList.forEach(activity => {
+    if (activity && activity.id != null) mergedById.set(String(activity.id), normalizeCreatedActivity(activity));
+  });
+
+  return Array.from(mergedById.values())
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
 function applyCreatedActivities(createdActivities) {
   const normalizedCreated = Array.isArray(createdActivities)
     ? createdActivities.map(normalizeCreatedActivity)
@@ -89,10 +119,12 @@ function startSharedActivitiesSync() {
       const cloudActivities = snapshot.docs
         .map(doc => normalizeCreatedActivity(doc.data()))
         .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-      applyCreatedActivities(cloudActivities);
-      localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(cloudActivities));
+      const mergedActivities = mergeCreatedActivities(cloudActivities, readLocalCreatedActivities());
+      applyCreatedActivities(mergedActivities);
+      localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(mergedActivities));
     }, (error) => {
       console.warn('[OFF SITE] Firestore sync failed, using local data:', error);
+      applyCreatedActivities(readLocalCreatedActivities());
       showCloudWarning('Cloud sync blocked. Enable Firestore Database and allow reads/writes in rules.');
     });
 }
