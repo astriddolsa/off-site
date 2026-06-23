@@ -295,6 +295,17 @@ const state = {
   connections: new Set()
 };
 
+const STORAGE_KEYS = {
+  user: 'offsite_user',
+  createdActivities: 'offsite_created_activities'
+};
+
+const BASE_ACTIVITIES = state.activities.map(activity => ({
+  ...activity,
+  host: activity.host ? { ...activity.host } : null,
+  participants: Array.isArray(activity.participants) ? [...activity.participants] : []
+}));
+
 const sportsData = [
   { name: 'Football', emoji: '⚽', category: 'team' },
   { name: 'Basketball', emoji: '🏀', category: 'team' },
@@ -1193,14 +1204,24 @@ function handleCreate(e) {
   const sportData = sportsData.find(s => s.name === state.selectedSport);
   const unlimitedForRunning = state.selectedSport === 'Running' && !!document.getElementById('createUnlimited')?.checked;
   const maxParticipants = document.getElementById('createMax').value;
+  const rawTime = document.getElementById('createTime').value;
+  const [hoursPart, minutesPart] = String(rawTime || '').split(':');
+  const parsedHours = Number(hoursPart);
+  const parsedMinutes = Number(minutesPart);
+  const hasValidTime = Number.isFinite(parsedHours) && Number.isFinite(parsedMinutes);
+  const displayTime = hasValidTime
+    ? new Date(2000, 0, 1, parsedHours, parsedMinutes).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : rawTime;
   const newAct = {
     id: Date.now(),
+    isUserCreated: true,
+    createdAt: new Date().toISOString(),
     title: document.getElementById('createTitle').value,
     sport: state.selectedSport,
     category: sportData ? sportData.category : 'team',
     image: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=400&h=500&fit=crop',
     date: new Date(document.getElementById('createDate').value).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}),
-    time: document.getElementById('createTime').value,
+    time: displayTime,
     location: document.getElementById('createLocation').value,
     level: document.getElementById('createLevel').value,
     spots: unlimitedForRunning ? '1/No limit' : '1/' + maxParticipants,
@@ -1214,12 +1235,14 @@ function handleCreate(e) {
   };
 
   state.activities.unshift(newAct);
+  persistCreatedActivities();
   showToast('Activity created!');
   e.target.reset();
   document.querySelectorAll('.sport-option').forEach(o => o.classList.remove('selected'));
   state.selectedSport = null;
   state.selectedVisibility = 'public';
   updateCreateFormForSport();
+  state.selectedDiscoverView = 'matches';
   navTo('discover');
 }
 
@@ -1715,6 +1738,7 @@ async function handleGoogleAccessToken(accessToken) {
       image: profile.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
       bio: 'Sports enthusiast'
     };
+    persistUserSession();
 
     document.getElementById('authModal').classList.remove('active');
     showToast(`Welcome ${state.user.name}!`);
@@ -1741,6 +1765,7 @@ function handleGoogleSignIn(response) {
       image: decoded.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
       bio: 'Sports enthusiast'
     };
+    persistUserSession();
     document.getElementById('authModal').classList.remove('active');
     showToast(`Welcome ${decoded.name}!`);
     navTo('discover');
@@ -1759,6 +1784,50 @@ function parseJwt(token) {
   }
 }
 
+function persistUserSession() {
+  try {
+    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(state.user || null));
+  } catch (error) {
+    console.warn('[OFF SITE] Could not persist user session:', error);
+  }
+}
+
+function persistCreatedActivities() {
+  try {
+    const createdActivities = state.activities.filter(activity => activity.isUserCreated);
+    localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(createdActivities));
+  } catch (error) {
+    console.warn('[OFF SITE] Could not persist created activities:', error);
+  }
+}
+
+function loadPersistedSession() {
+  try {
+    const storedUser = localStorage.getItem(STORAGE_KEYS.user);
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
+      if (parsedUser && typeof parsedUser === 'object') {
+        state.user = parsedUser;
+      }
+    }
+  } catch (error) {
+    console.warn('[OFF SITE] Could not restore user session:', error);
+  }
+
+  try {
+    const storedCreatedActivities = localStorage.getItem(STORAGE_KEYS.createdActivities);
+    const parsedCreatedActivities = storedCreatedActivities ? JSON.parse(storedCreatedActivities) : [];
+    const createdActivities = Array.isArray(parsedCreatedActivities) ? parsedCreatedActivities : [];
+    state.activities = [
+      ...createdActivities,
+      ...BASE_ACTIVITIES
+    ];
+  } catch (error) {
+    console.warn('[OFF SITE] Could not restore created activities:', error);
+    state.activities = [...BASE_ACTIVITIES];
+  }
+}
+
 function authEmail(e) {
   e.preventDefault();
   state.user = {
@@ -1767,6 +1836,7 @@ function authEmail(e) {
     image: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
     bio: 'Sports lover'
   };
+  persistUserSession();
   document.getElementById('authModal').classList.remove('active');
   showToast('Welcome to OFF SITE!');
   navTo('discover');
@@ -1928,6 +1998,7 @@ const radiusSelect = document.getElementById('discoverRadius');
 if (radiusSelect) radiusSelect.value = String(state.selectedRadiusKm || 5);
 
 // ==================== INIT ====================
+loadPersistedSession();
 loadManualActivities();
 checkCountry();
 requestUserLocation();
