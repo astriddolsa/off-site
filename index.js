@@ -15,10 +15,18 @@ const FIREBASE_CONFIG = {
 
 let _firestoreDb = null;
 let _activitiesUnsubscribe = null;
+let _cloudWarningShown = false;
+
+function showCloudWarning(message) {
+  if (_cloudWarningShown) return;
+  _cloudWarningShown = true;
+  showToast(message);
+}
 
 function initializeFirebase() {
   if (!window.firebase) {
     console.warn('[OFF SITE] Firebase SDK not loaded, using local storage fallback only.');
+    showCloudWarning('Cloud sync unavailable: Firebase SDK not loaded.');
     return false;
   }
 
@@ -27,10 +35,13 @@ function initializeFirebase() {
       firebase.initializeApp(FIREBASE_CONFIG);
     }
     _firestoreDb = firebase.firestore();
+    // Improve browser compatibility for real-time listeners.
+    _firestoreDb.settings({ experimentalAutoDetectLongPolling: true, useFetchStreams: false });
     return true;
   } catch (error) {
     console.warn('[OFF SITE] Firebase initialization failed:', error);
     _firestoreDb = null;
+    showCloudWarning('Cloud sync unavailable: Firebase failed to initialize.');
     return false;
   }
 }
@@ -74,13 +85,15 @@ function startSharedActivitiesSync() {
 
   _activitiesUnsubscribe = _firestoreDb
     .collection('activities')
-    .orderBy('createdAt', 'desc')
     .onSnapshot((snapshot) => {
-      const cloudActivities = snapshot.docs.map(doc => normalizeCreatedActivity(doc.data()));
+      const cloudActivities = snapshot.docs
+        .map(doc => normalizeCreatedActivity(doc.data()))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
       applyCreatedActivities(cloudActivities);
       localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(cloudActivities));
     }, (error) => {
       console.warn('[OFF SITE] Firestore sync failed, using local data:', error);
+      showCloudWarning('Cloud sync blocked. Enable Firestore Database and allow reads/writes in rules.');
     });
 }
 
@@ -91,6 +104,17 @@ async function saveCreatedActivityToCloud(activity) {
     await _firestoreDb.collection('activities').doc(String(activity.id)).set(activity, { merge: true });
   } catch (error) {
     console.warn('[OFF SITE] Could not save activity to Firestore:', error);
+    showCloudWarning('Could not publish match to cloud. Check Firestore setup/rules.');
+  }
+}
+
+async function verifyCloudSyncHealth() {
+  if (!_firestoreDb) return;
+  try {
+    await _firestoreDb.collection('activities').limit(1).get();
+  } catch (error) {
+    console.warn('[OFF SITE] Firestore health check failed:', error);
+    showCloudWarning('Cloud sync disabled. Create Firestore Database and set temporary test rules.');
   }
 }
 
@@ -2172,6 +2196,7 @@ if (radiusSelect) radiusSelect.value = String(state.selectedRadiusKm || 5);
 loadPersistedSession();
 initializeFirebase();
 startSharedActivitiesSync();
+verifyCloudSyncHealth();
 loadManualActivities();
 checkCountry();
 requestUserLocation();
