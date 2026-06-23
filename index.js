@@ -72,7 +72,10 @@ function readLocalCreatedActivities() {
   try {
     const stored = localStorage.getItem(STORAGE_KEYS.createdActivities);
     const parsed = stored ? JSON.parse(stored) : [];
-    return Array.isArray(parsed) ? parsed.map(normalizeCreatedActivity) : [];
+    const normalized = Array.isArray(parsed) ? parsed.map(normalizeCreatedActivity) : [];
+    console.log('[OFF SITE DEBUG] readLocalCreatedActivities: Read', parsed.length, 'from localStorage, normalized to', normalized.length);
+    console.log('[OFF SITE DEBUG] Normalized local activities:', normalized.map(a => ({ id: a.id, title: a.title, isUserCreated: a.isUserCreated, createdAt: a.createdAt ? 'YES' : 'NO' })));
+    return normalized;
   } catch (error) {
     console.warn('[OFF SITE] Could not read local created activities:', error);
     return [];
@@ -103,10 +106,17 @@ function applyCreatedActivities(createdActivities) {
     ? createdActivities.map(normalizeCreatedActivity)
     : [];
 
+  console.log('[OFF SITE DEBUG] applyCreatedActivities: Input count =', Array.isArray(createdActivities) ? createdActivities.length : 0);
+  console.log('[OFF SITE DEBUG] Normalized count =', normalizedCreated.length);
+  console.log('[OFF SITE DEBUG] BASE_ACTIVITIES count =', BASE_ACTIVITIES.length);
+  console.log('[OFF SITE DEBUG] Normalized details:', normalizedCreated.map(a => ({ id: a.id, title: a.title, isUserCreated: a.isUserCreated, createdAt: a.createdAt ? 'YES' : 'NO' })));
+
   state.activities = [
     ...normalizedCreated,
     ...BASE_ACTIVITIES
   ];
+  
+  console.log('[OFF SITE DEBUG] Final state.activities count =', state.activities.length);
 
   if (document.getElementById('screen-discover')?.classList.contains('active')) {
     renderDiscover(document.querySelector('.filter-chip.active')?.dataset.filter, state.selectedCombat || 'all');
@@ -898,12 +908,23 @@ async function renderDiscover(filter, combatSubfilter = 'all') {
     });
   } else {
     // matches view — show user-created activities, with smart filtering
+    console.log('[OFF SITE DEBUG] Total activities in state:', state.activities.length);
+    console.log('[OFF SITE DEBUG] Activities breakdown:', state.activities.map((a, i) => ({
+      id: a.id,
+      title: a.title,
+      isUserCreated: a.isUserCreated,
+      createdAt: a.createdAt ? 'YES' : 'NO',
+      index: i
+    })));
+    
     const allMatches = state.activities.filter(a => a.isUserCreated).slice();
+    console.log('[OFF SITE DEBUG] After isUserCreated filter:', allMatches.length, 'matches');
 
     if (searchTerm) {
       allMatches = allMatches.filter(a => a.title.toLowerCase().includes(searchTerm) || a.sport.toLowerCase().includes(searchTerm) || a.location.toLowerCase().includes(searchTerm));
     }
     let matches = allMatches.filter(matchesCategory).filter(matchesCombat);
+    console.log('[OFF SITE DEBUG] After category/combat filter:', matches.length, 'matches');
 
     // Calculate distances if user has enabled location
     if (state.userLocation) {
@@ -1475,6 +1496,7 @@ async function handleCreate(e) {
     }
   }
 
+  console.log('[OFF SITE DEBUG] Creating activity with:', { id: newAct.id, title: newAct.title, isUserCreated: newAct.isUserCreated, createdAt: newAct.createdAt });
   state.activities.unshift(newAct);
   persistCreatedActivities();
   saveCreatedActivityToCloud(newAct);
@@ -2037,6 +2059,8 @@ function persistUserSession() {
 function persistCreatedActivities() {
   try {
     const createdActivities = state.activities.filter(activity => activity.isUserCreated);
+    console.log('[OFF SITE DEBUG] persistCreatedActivities: Filtering for isUserCreated from', state.activities.length, 'activities, found', createdActivities.length);
+    console.log('[OFF SITE DEBUG] Persisting to localStorage:', createdActivities.map(a => ({ id: a.id, title: a.title, createdAt: a.createdAt })));
     localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(createdActivities));
   } catch (error) {
     console.warn('[OFF SITE] Could not persist created activities:', error);
