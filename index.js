@@ -1199,6 +1199,25 @@ function selectVis(el) {
   state.selectedVisibility = el.dataset.vis;
 }
 
+// Map sports to activity images
+function getSportImage(sport) {
+  const imageMap = {
+    'Football': 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=400&h=500&fit=crop',
+    'Basketball': 'https://images.unsplash.com/photo-1546519638-68711109d298?w=400&h=500&fit=crop',
+    'Tennis': 'https://images.unsplash.com/photo-1554068865-24cecd4e34c8?w=400&h=500&fit=crop',
+    'Swimming': 'https://images.unsplash.com/photo-1576610616656-d3aa5d1f4534?w=400&h=500&fit=crop',
+    'Yoga': 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&h=500&fit=crop',
+    'Running': 'https://images.unsplash.com/photo-1502904550040-7534597429ae?w=400&h=500&fit=crop',
+    'Surfing': 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&h=500&fit=crop',
+    'Cycling': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=500&fit=crop',
+    'Combat Sports': 'https://images.unsplash.com/photo-1566818735868-e71b99932e29?w=400&h=500&fit=crop',
+    'Volleyball': 'https://images.unsplash.com/photo-1617622614171-b4470d0f3e35?w=400&h=500&fit=crop',
+    'Golf': 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=400&h=500&fit=crop',
+    'Climbing': 'https://images.unsplash.com/photo-1522163182402-834ff5c0b5e8?w=400&h=500&fit=crop',
+  };
+  return imageMap[sport] || 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=400&h=500&fit=crop';
+}
+
 // Geocode a location string to get lat/lng coordinates
 async function geocodeLocation(locationString) {
   if (!locationString || !_geocoder) return null;
@@ -1224,6 +1243,12 @@ async function geocodeLocation(locationString) {
 async function handleCreate(e) {
   e.preventDefault();
   if (!state.selectedSport) { showToast('Please select a sport'); return; }
+  
+  const locationStr = document.getElementById('createLocation').value;
+  if (!locationStr || locationStr.trim() === '') { 
+    showToast('Please specify a location'); 
+    return; 
+  }
 
   const sportData = sportsData.find(s => s.name === state.selectedSport);
   const unlimitedForRunning = state.selectedSport === 'Running' && !!document.getElementById('createUnlimited')?.checked;
@@ -1243,10 +1268,10 @@ async function handleCreate(e) {
     title: document.getElementById('createTitle').value,
     sport: state.selectedSport,
     category: sportData ? sportData.category : 'team',
-    image: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=400&h=500&fit=crop',
+    image: getSportImage(state.selectedSport),
     date: new Date(document.getElementById('createDate').value).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}),
     time: displayTime,
-    location: document.getElementById('createLocation').value,
+    location: locationStr,
     level: document.getElementById('createLevel').value,
     spots: unlimitedForRunning ? '1/No limit' : '1/' + maxParticipants,
     description: document.getElementById('createDesc').value,
@@ -1259,7 +1284,6 @@ async function handleCreate(e) {
   };
 
   // Geocode the location to attach coordinates
-  const locationStr = document.getElementById('createLocation').value;
   if (locationStr) {
     const coords = await geocodeLocation(locationStr);
     if (coords) {
