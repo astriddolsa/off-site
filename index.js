@@ -16,7 +16,6 @@ const FIREBASE_CONFIG = {
 let _firestoreDb = null;
 let _activitiesUnsubscribe = null;
 let _cloudWarningShown = false;
-let _firebaseAuthReadyPromise = Promise.resolve(true);
 
 function showCloudWarning(message) {
   if (_cloudWarningShown) return;
@@ -36,14 +35,11 @@ function initializeFirebase() {
       firebase.initializeApp(FIREBASE_CONFIG);
     }
 
+    // Best-effort auth only: Firestore sync should still work for open/public rules.
     if (firebase.auth) {
-      _firebaseAuthReadyPromise = firebase.auth().signInAnonymously()
-        .then(() => true)
-        .catch((error) => {
-          console.warn('[OFF SITE] Firebase anonymous auth failed:', error);
-          showCloudWarning('Cloud sync blocked: enable Anonymous Auth in Firebase Authentication.');
-          return false;
-        });
+      firebase.auth().signInAnonymously().catch((error) => {
+        console.warn('[OFF SITE] Firebase anonymous auth failed (continuing without auth):', error);
+      });
     }
 
     _firestoreDb = firebase.firestore();
@@ -121,12 +117,6 @@ function applyCreatedActivities(createdActivities) {
 async function startSharedActivitiesSync() {
   if (!_firestoreDb) return;
 
-  const authReady = await _firebaseAuthReadyPromise;
-  if (!authReady) {
-    showCloudWarning('Cloud sync unavailable: Firebase auth not ready.');
-    return;
-  }
-
   if (typeof _activitiesUnsubscribe === 'function') {
     _activitiesUnsubscribe();
   }
@@ -150,9 +140,6 @@ async function startSharedActivitiesSync() {
 async function saveCreatedActivityToCloud(activity) {
   if (!_firestoreDb || !activity || !activity.id) return;
 
-  const authReady = await _firebaseAuthReadyPromise;
-  if (!authReady) return;
-
   try {
     await _firestoreDb.collection('activities').doc(String(activity.id)).set(activity, { merge: true });
   } catch (error) {
@@ -163,8 +150,6 @@ async function saveCreatedActivityToCloud(activity) {
 
 async function verifyCloudSyncHealth() {
   if (!_firestoreDb) return;
-  const authReady = await _firebaseAuthReadyPromise;
-  if (!authReady) return;
   try {
     await _firestoreDb.collection('activities').limit(1).get();
   } catch (error) {
