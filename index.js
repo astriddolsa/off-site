@@ -742,15 +742,30 @@ async function renderDiscover(filter, combatSubfilter = 'all') {
   } else {
     // matches view — show user-created activities near the user
     let matches = state.activities.slice();
+    
+    // Calculate distances only if user has enabled location
     if (state.userLocation) {
-      matches = matches.map(a => ({ ...a, distance: calcDistance(state.userLocation.lat, state.userLocation.lng, a.coords.lat, a.coords.lng) }));
-      matches = matches.filter(a => a.distance && Number(a.distance) <= radiusKm);
+      matches = matches.map(a => {
+        if (a.coords && a.coords.lat && a.coords.lng) {
+          const distance = calcDistance(state.userLocation.lat, state.userLocation.lng, a.coords.lat, a.coords.lng);
+          return { ...a, distance };
+        }
+        return { ...a, distance: null };
+      });
+      // Filter by radius only for activities with coords
+      matches = matches.filter(a => !a.coords || a.distance === null || (a.distance && Number(a.distance) <= radiusKm));
     }
 
     if (searchTerm) {
       matches = matches.filter(a => a.title.toLowerCase().includes(searchTerm) || a.sport.toLowerCase().includes(searchTerm) || a.location.toLowerCase().includes(searchTerm));
     }
     matches = matches.filter(matchesCategory).filter(matchesCombat);
+
+    if (matches.length === 0) {
+      setDiscoverNotice('No matches found. Create one to get started!');
+    } else {
+      setDiscoverNotice('');
+    }
 
     matches.forEach((act, i) => {
       const card = document.createElement('div');
@@ -1250,6 +1265,13 @@ async function handleCreate(e) {
     return; 
   }
 
+  // Ensure Google Maps API is loaded
+  try {
+    await loadPlacesAPI();
+  } catch (err) {
+    console.warn('[OFF SITE] Failed to load Maps API before creating activity', err);
+  }
+
   const sportData = sportsData.find(s => s.name === state.selectedSport);
   const unlimitedForRunning = state.selectedSport === 'Running' && !!document.getElementById('createUnlimited')?.checked;
   const maxParticipants = document.getElementById('createMax').value;
@@ -1288,6 +1310,9 @@ async function handleCreate(e) {
     const coords = await geocodeLocation(locationStr);
     if (coords) {
       newAct.coords = coords;
+      console.log('[OFF SITE] Activity geocoded to:', coords);
+    } else {
+      console.warn('[OFF SITE] Geocoding failed for location:', locationStr);
     }
   }
 
