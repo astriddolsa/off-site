@@ -125,48 +125,139 @@ function applyCreatedActivities(createdActivities) {
   }
 }
 
-async function startSharedActivitiesSync() {
-  if (!_firestoreDb) return;
+// ---- Firestore REST helpers (bypass broken gRPC streaming) ----
+const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
+const FIRESTORE_API_KEY = FIREBASE_CONFIG.apiKey;
 
-  if (typeof _activitiesUnsubscribe === 'function') {
-    _activitiesUnsubscribe();
+// Convert a plain JS object into a Firestore REST document fields object
+function toFirestoreFields(obj) {
+  const fields = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) {
+      fields[k] = { nullValue: null };
+    } else if (typeof v === 'boolean') {
+      fields[k] = { booleanValue: v };
+    } else if (typeof v === 'number') {
+      fields[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+    } else if (typeof v === 'string') {
+      fields[k] = { stringValue: v };
+    } else if (Array.isArray(v)) {
+      fields[k] = { arrayValue: { values: v.map(item => typeof item === 'string' ? { stringValue: item } : { stringValue: String(item) }) } };
+    } else if (typeof v === 'object') {
+      fields[k] = { mapValue: { fields: toFirestoreFields(v) } };
+    } else {
+      fields[k] = { stringValue: String(v) };
+    }
   }
+  return fields;
+}
 
-  _activitiesUnsubscribe = _firestoreDb
-    .collection('activities')
-    .onSnapshot((snapshot) => {
-      const cloudActivities = snapshot.docs
-        .map(doc => normalizeCreatedActivity(doc.data()))
-        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-      const mergedActivities = mergeCreatedActivities(cloudActivities, readLocalCreatedActivities());
-      applyCreatedActivities(mergedActivities);
-      localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(mergedActivities));
-    }, (error) => {
-      console.warn('[OFF SITE] Firestore sync failed, using local data:', error);
-      applyCreatedActivities(readLocalCreatedActivities());
-      showCloudWarning('Cloud sync blocked. Enable Firestore Database and allow reads/writes in rules.');
-    });
+// Convert Firestore REST document fields back to plain JS object
+function fromFirestoreFields(fields) {
+  if (!fields) return {};
+  const obj = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v.stringValue !== undefined) obj[k] = v.stringValue;
+    else if (v.integerValue !== undefined) obj[k] = Number(v.integerValue);
+    else if (v.doubleValue !== undefined) obj[k] = v.doubleValue;
+    else if (v.booleanValue !== undefined) obj[k] = v.booleanValue;
+    else if (v.nullValue !== undefined) obj[k] = null;
+    else if (v.arrayValue !== undefined) obj[k] = (v.arrayValue.values || []).map(item => item.stringValue !== undefined ? item.stringValue : item.integerValue !== undefined ? Number(item.integerValue) : null);
+    else if (v.mapValue !== undefined) obj[k] = fromFirestoreFields(v.mapValue.fields);
+  }
+  return obj;
+}
+
+async function fetchActivitiesFromCloud() {
+  try {
+    const url = `${FIRESTORE_BASE}/activities?key=${FIRESTORE_API_KEY}&pageSize=100`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (resp.status === 403) {
+        showFirestoreRulesWarning();
+      }
+      console.warn('[OFF SITE] Firestore REST read failed:', resp.status, err);
+      return null;
+    }
+    const json = await resp.json();
+    const docs = (json.documents || []).map(doc => fromFirestoreFields(doc.fields));
+    console.log('[OFF SITE] Fetched', docs.length, 'activities from cloud');
+    return docs;
+  } catch (e) {
+    console.warn('[OFF SITE] Firestore REST fetch error:', e);
+    return null;
+  }
 }
 
 async function saveCreatedActivityToCloud(activity) {
-  if (!_firestoreDb || !activity || !activity.id) return;
-
+  if (!activity || !activity.id) return;
   try {
-    await _firestoreDb.collection('activities').doc(String(activity.id)).set(activity, { merge: true });
-  } catch (error) {
-    console.warn('[OFF SITE] Could not save activity to Firestore:', error);
-    showCloudWarning('Could not publish match to cloud. Check Firestore setup/rules.');
+    const url = `${FIRESTORE_BASE}/activities/${String(activity.id)}?key=${FIRESTORE_API_KEY}`;
+    const body = JSON.stringify({ fields: toFirestoreFields(activity) });
+    const resp = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (resp.status === 403) {
+        showFirestoreRulesWarning();
+      }
+      console.warn('[OFF SITE] Could not save activity to cloud:', resp.status, err);
+    } else {
+      console.log('[OFF SITE] Activity saved to cloud successfully:', activity.id);
+      hideFirestoreRulesWarning();
+    }
+  } catch (e) {
+    console.warn('[OFF SITE] Cloud save error:', e);
   }
 }
 
-async function verifyCloudSyncHealth() {
-  if (!_firestoreDb) return;
-  try {
-    await _firestoreDb.collection('activities').limit(1).get();
-  } catch (error) {
-    console.warn('[OFF SITE] Firestore health check failed:', error);
-    showCloudWarning('Cloud sync disabled. Create Firestore Database and set temporary test rules.');
+let _syncIntervalId = null;
+async function startSharedActivitiesSync() {
+  // Run immediately on start, then every 20 seconds
+  await _doSyncPoll();
+  if (_syncIntervalId) clearInterval(_syncIntervalId);
+  _syncIntervalId = setInterval(_doSyncPoll, 20000);
+}
+
+async function _doSyncPoll() {
+  const cloudActivities = await fetchActivitiesFromCloud();
+  if (cloudActivities === null) {
+    // Cloud unavailable — use local only
+    applyCreatedActivities(readLocalCreatedActivities());
+    return;
   }
+  hideFirestoreRulesWarning();
+  const mergedActivities = mergeCreatedActivities(cloudActivities, readLocalCreatedActivities());
+  applyCreatedActivities(mergedActivities);
+  localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(mergedActivities));
+}
+
+async function verifyCloudSyncHealth() {
+  // Health check is now done inside startSharedActivitiesSync → fetchActivitiesFromCloud
+}
+
+function showFirestoreRulesWarning() {
+  let banner = document.getElementById('firestoreRulesBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'firestoreRulesBanner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#e53935;color:#fff;padding:12px 16px;font-size:13px;text-align:center;line-height:1.5;';
+    banner.innerHTML = `⚠️ <strong>Cloud sync is blocked.</strong> To enable cross-browser match sharing:<br>
+      1. Go to <a href="https://console.firebase.google.com/project/off-site-f1887/firestore/rules" target="_blank" style="color:#fff;text-decoration:underline">Firebase Console → Firestore → Rules</a><br>
+      2. Replace all rules with: <code style="background:rgba(0,0,0,.3);padding:2px 6px;border-radius:3px">allow read, write: if true;</code><br>
+      3. Click Publish &mdash; matches will sync immediately.`;
+    document.body.prepend(banner);
+  }
+  banner.style.display = 'block';
+}
+
+function hideFirestoreRulesWarning() {
+  const banner = document.getElementById('firestoreRulesBanner');
+  if (banner) banner.style.display = 'none';
 }
 
 // Load Google Maps JS API (Places library) dynamically for client-side Places lookups
