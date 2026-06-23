@@ -895,34 +895,37 @@ async function renderDiscover(filter, combatSubfilter = 'all') {
       (i % 2 === 0 ? col1 : col2).appendChild(card);
     });
   } else {
-    // matches view — show user-created activities near the user
-    let matches = state.activities.slice();
-    
-    // Calculate distances only if user has enabled location
-    if (state.userLocation) {
-      matches = matches.map(a => {
-        if (a.coords && a.coords.lat && a.coords.lng) {
-          const distance = calcDistance(state.userLocation.lat, state.userLocation.lng, a.coords.lat, a.coords.lng);
-          return { ...a, distance };
-        }
-        return { ...a, distance: null };
-      });
-      // Filter by radius only for activities with coords
-      matches = matches.filter(a => !a.coords || a.distance === null || (a.distance && Number(a.distance) <= radiusKm));
-    }
+    // matches view — include a global fallback so users can always discover created activities
+    const allMatches = state.activities.slice();
+    let matches = allMatches.slice();
 
     if (searchTerm) {
       matches = matches.filter(a => a.title.toLowerCase().includes(searchTerm) || a.sport.toLowerCase().includes(searchTerm) || a.location.toLowerCase().includes(searchTerm));
     }
     matches = matches.filter(matchesCategory).filter(matchesCombat);
 
-    if (matches.length === 0) {
+    const candidateMatches = matches.map(a => {
+      if (state.userLocation && a.coords && a.coords.lat && a.coords.lng) {
+        const distance = calcDistance(state.userLocation.lat, state.userLocation.lng, a.coords.lat, a.coords.lng);
+        return { ...a, distance };
+      }
+      return { ...a, distance: null };
+    });
+
+    const nearbyMatches = candidateMatches.filter(a => !a.coords || a.distance === null || (a.distance && Number(a.distance) <= radiusKm));
+    const farMatches = candidateMatches.filter(a => a.coords && a.distance && Number(a.distance) > radiusKm);
+
+    let visibleMatches = nearbyMatches;
+    if (visibleMatches.length === 0 && farMatches.length > 0) {
+      visibleMatches = farMatches;
+      setDiscoverNotice(`No matches found within ${radiusKm} km. Showing ${farMatches.length} farther match(es).`);
+    } else if (visibleMatches.length === 0) {
       setDiscoverNotice('No matches found. Create one to get started!');
     } else {
       setDiscoverNotice('');
     }
 
-    matches.forEach((act, i) => {
+    visibleMatches.forEach((act, i) => {
       const card = document.createElement('div');
       card.className = 'activity-card';
       card.onclick = () => openDetail(act.id);
