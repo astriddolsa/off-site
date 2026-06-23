@@ -2048,6 +2048,19 @@ function closeAuth(e) {
 
 let googleTokenClient = null;
 
+function signInAsGuest(message) {
+  state.user = {
+    name: 'Guest User',
+    email: 'guest@offsite.app',
+    image: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
+    bio: 'Sports lover'
+  };
+  persistUserSession();
+  document.getElementById('authModal').classList.remove('active');
+  showToast(message || 'Signed in as guest');
+  navTo('discover');
+}
+
 function authGoogle() {
   const clientId = '446299428719-t6tovvng0u2rhi7jheub8pgd7f0brsku.apps.googleusercontent.com';
   if (!window.google || !google.accounts || !google.accounts.oauth2) {
@@ -2059,10 +2072,14 @@ function authGoogle() {
     googleTokenClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: 'openid email profile',
+      error_callback: (error) => {
+        console.warn('[OFF SITE] Google OAuth blocked or cancelled:', error);
+        signInAsGuest('Google auth unavailable. Signed in as guest.');
+      },
       callback: async (tokenResponse) => {
         if (!tokenResponse || tokenResponse.error) {
           console.error('[OFF SITE] Google token error:', tokenResponse);
-          showToast('Google Sign-In failed. Check authorized origin in Google Cloud.');
+          signInAsGuest('Google auth blocked. Signed in as guest.');
           return;
         }
         await handleGoogleAccessToken(tokenResponse.access_token);
@@ -2070,7 +2087,12 @@ function authGoogle() {
     });
   }
 
-  googleTokenClient.requestAccessToken({ prompt: 'select_account' });
+  try {
+    googleTokenClient.requestAccessToken({ prompt: 'select_account' });
+  } catch (error) {
+    console.warn('[OFF SITE] Google access token request failed:', error);
+    signInAsGuest('Google sign-in failed. Signed in as guest.');
+  }
 }
 
 async function handleGoogleAccessToken(accessToken) {
@@ -2183,9 +2205,12 @@ function loadPersistedSession() {
 
 function authEmail(e) {
   e.preventDefault();
+  const emailInput = e.target.querySelector('input[type="email"]');
+  const email = (emailInput?.value || '').trim().toLowerCase();
+  const displayName = email ? email.split('@')[0] : 'Guest User';
   state.user = {
-    name: 'Guest User',
-    email: 'guest@example.com',
+    name: displayName,
+    email: email || 'guest@example.com',
     image: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
     bio: 'Sports lover'
   };
@@ -2196,7 +2221,7 @@ function authEmail(e) {
 }
 
 function browseAnonymous() {
-  document.getElementById('authModal').classList.remove('active');
+  signInAsGuest('Browsing as guest');
 }
 
 // ==================== TOAST ====================
