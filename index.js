@@ -1899,7 +1899,11 @@ function loadPersistedSession() {
   try {
     const storedCreatedActivities = localStorage.getItem(STORAGE_KEYS.createdActivities);
     const parsedCreatedActivities = storedCreatedActivities ? JSON.parse(storedCreatedActivities) : [];
-    const createdActivities = Array.isArray(parsedCreatedActivities) ? parsedCreatedActivities : [];
+    // Fix images for any activities loaded from localStorage — ensure they match the sport
+    const createdActivities = Array.isArray(parsedCreatedActivities) ? parsedCreatedActivities.map(act => ({
+      ...act,
+      image: getSportImage(act.sport)
+    })) : [];
     state.activities = [
       ...createdActivities,
       ...BASE_ACTIVITIES
