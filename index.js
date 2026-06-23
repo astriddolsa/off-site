@@ -6,6 +6,7 @@ const VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_TRACKING_ID="66a32682faa1cf2628d20552f1
 // Load Google Maps JS API (Places library) dynamically for client-side Places lookups
 let _placesServiceReady = false;
 let _placesService = null;
+let _geocoder = null;
 function loadPlacesAPI() {
   return new Promise((resolve, reject) => {
     if (window.google && window.google.maps && window.google.maps.places) {
@@ -34,6 +35,7 @@ function loadPlacesAPI() {
     document.body.appendChild(mapDiv);
     const map = new google.maps.Map(mapDiv, { center: { lat: 0, lng: 0 }, zoom: 15 });
     _placesService = new google.maps.places.PlacesService(map);
+    _geocoder = new google.maps.Geocoder();
     return;
   });
 }
@@ -1197,7 +1199,29 @@ function selectVis(el) {
   state.selectedVisibility = el.dataset.vis;
 }
 
-function handleCreate(e) {
+// Geocode a location string to get lat/lng coordinates
+async function geocodeLocation(locationString) {
+  if (!locationString || !_geocoder) return null;
+  
+  try {
+    const result = await new Promise((resolve, reject) => {
+      _geocoder.geocode({ address: locationString }, (results, status) => {
+        if (status === 'OK' && results && results.length > 0) {
+          const location = results[0].geometry.location;
+          resolve({ lat: location.lat(), lng: location.lng() });
+        } else {
+          reject(new Error(`Geocode failed: ${status}`));
+        }
+      });
+    });
+    return result;
+  } catch (err) {
+    console.warn('[OFF SITE] Geocoding failed for location:', locationString, err);
+    return null;
+  }
+}
+
+async function handleCreate(e) {
   e.preventDefault();
   if (!state.selectedSport) { showToast('Please select a sport'); return; }
 
@@ -1233,6 +1257,15 @@ function handleCreate(e) {
     },
     participants: []
   };
+
+  // Geocode the location to attach coordinates
+  const locationStr = document.getElementById('createLocation').value;
+  if (locationStr) {
+    const coords = await geocodeLocation(locationStr);
+    if (coords) {
+      newAct.coords = coords;
+    }
+  }
 
   state.activities.unshift(newAct);
   persistCreatedActivities();
