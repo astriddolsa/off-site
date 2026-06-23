@@ -35,13 +35,6 @@ function initializeFirebase() {
       firebase.initializeApp(FIREBASE_CONFIG);
     }
 
-    // Best-effort auth only: Firestore sync should still work for open/public rules.
-    if (firebase.auth) {
-      firebase.auth().signInAnonymously().catch((error) => {
-        console.warn('[OFF SITE] Firebase anonymous auth failed (continuing without auth):', error);
-      });
-    }
-
     _firestoreDb = firebase.firestore();
     // Improve browser compatibility for real-time listeners.
     _firestoreDb.settings({ experimentalAutoDetectLongPolling: true, useFetchStreams: false });
@@ -2046,7 +2039,7 @@ function closeAuth(e) {
   }
 }
 
-let googleTokenClient = null;
+let _googleProvider = null;
 
 function signInAsGuest(message) {
   state.user = {
@@ -2061,91 +2054,77 @@ function signInAsGuest(message) {
   navTo('discover');
 }
 
+function completeSignIn(user, welcomeName) {
+  state.user = {
+    name: user?.displayName || welcomeName || 'User',
+    email: user?.email || '',
+    image: user?.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
+    bio: 'Sports enthusiast'
+  };
+  persistUserSession();
+  document.getElementById('authModal').classList.remove('active');
+  showToast(`Welcome ${state.user.name}!`);
+  navTo('discover');
+}
+
 function authGoogle() {
-  const clientId = '446299428719-t6tovvng0u2rhi7jheub8pgd7f0brsku.apps.googleusercontent.com';
-  if (!window.google || !google.accounts || !google.accounts.oauth2) {
-    showToast('Google Sign-In is still loading. Try again in a second.');
+  if (!window.firebase || !firebase.auth) {
+    signInAsGuest('Google auth unavailable. Signed in as guest.');
     return;
   }
 
-  if (!googleTokenClient) {
-    googleTokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: 'openid email profile',
-      error_callback: (error) => {
-        console.warn('[OFF SITE] Google OAuth blocked or cancelled:', error);
-        signInAsGuest('Google auth unavailable. Signed in as guest.');
-      },
-      callback: async (tokenResponse) => {
-        if (!tokenResponse || tokenResponse.error) {
-          console.error('[OFF SITE] Google token error:', tokenResponse);
-          signInAsGuest('Google auth blocked. Signed in as guest.');
-          return;
-        }
-        await handleGoogleAccessToken(tokenResponse.access_token);
-      }
-    });
+  if (!_googleProvider) {
+    _googleProvider = new firebase.auth.GoogleAuthProvider();
+    _googleProvider.setCustomParameters({ prompt: 'select_account' });
   }
 
-  try {
-    googleTokenClient.requestAccessToken({ prompt: 'select_account' });
-  } catch (error) {
-    console.warn('[OFF SITE] Google access token request failed:', error);
-    signInAsGuest('Google sign-in failed. Signed in as guest.');
-  }
+  firebase.auth().signInWithPopup(_googleProvider)
+    .then((result) => {
+      completeSignIn(result?.user);
+    })
+    .catch((error) => {
+      const code = String(error?.code || '');
+      console.warn('[OFF SITE] Google popup sign-in failed:', error);
+
+      // Safari and some browsers block popups; fallback to redirect flow.
+      if (code === 'auth/popup-blocked' || code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        firebase.auth().signInWithRedirect(_googleProvider).catch((redirectError) => {
+          console.warn('[OFF SITE] Google redirect sign-in failed:', redirectError);
+          signInAsGuest('Google login blocked. Signed in as guest.');
+        });
+        return;
+      }
+
+      if (code === 'auth/operation-not-allowed' || code === 'auth/configuration-not-found' || code === 'auth/unauthorized-domain') {
+        showToast('Google login is not enabled yet in Firebase Auth. Use Email or Guest for now.');
+        return;
+      }
+
+      signInAsGuest('Google sign-in failed. Signed in as guest.');
+    });
 }
 
-async function handleGoogleAccessToken(accessToken) {
-  try {
-    const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
+function finalizeGoogleRedirectIfNeeded() {
+  if (!window.firebase || !firebase.auth) return;
+
+  firebase.auth().getRedirectResult()
+    .then((result) => {
+      if (result && result.user) {
+        completeSignIn(result.user);
       }
+    })
+    .catch((error) => {
+      console.warn('[OFF SITE] Google redirect result failed:', error);
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch profile (${response.status})`);
-    }
-
-    const profile = await response.json();
-    state.user = {
-      name: profile.name || 'User',
-      email: profile.email || '',
-      image: profile.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
-      bio: 'Sports enthusiast'
-    };
-    persistUserSession();
-
-    document.getElementById('authModal').classList.remove('active');
-    showToast(`Welcome ${state.user.name}!`);
-    navTo('discover');
-  } catch (error) {
-    console.error('[OFF SITE] Google profile error:', error);
-    showToast('Could not read your Google profile. Try again.');
-  }
 }
 
 function handleGoogleSignIn(response) {
-  if (!response || !response.credential) {
-    showToast('Google Sign-In failed.');
+  // Legacy hook kept for compatibility with older markup.
+  if (response && response.credential) {
+    authGoogle();
     return;
   }
-
-  const token = response.credential;
-  const decoded = parseJwt(token);
-
-  if (decoded) {
-    state.user = {
-      name: decoded.name || 'User',
-      email: decoded.email || '',
-      image: decoded.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face',
-      bio: 'Sports enthusiast'
-    };
-    persistUserSession();
-    document.getElementById('authModal').classList.remove('active');
-    showToast(`Welcome ${decoded.name}!`);
-    navTo('discover');
-  }
+  authGoogle();
 }
 
 function parseJwt(token) {
@@ -2154,8 +2133,8 @@ function parseJwt(token) {
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(atob(base64).split('').map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
     return JSON.parse(jsonPayload);
-  } catch (e) {
-    console.error('JWT decode failed:', e);
+  } catch (error) {
+    console.error('JWT decode failed:', error);
     return null;
   }
 }
@@ -2378,6 +2357,7 @@ if (radiusSelect) radiusSelect.value = String(state.selectedRadiusKm || 5);
 // ==================== INIT ====================
 loadPersistedSession();
 initializeFirebase();
+finalizeGoogleRedirectIfNeeded();
 startSharedActivitiesSync();
 verifyCloudSyncHealth();
 loadManualActivities();
