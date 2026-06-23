@@ -895,31 +895,30 @@ async function renderDiscover(filter, combatSubfilter = 'all') {
       (i % 2 === 0 ? col1 : col2).appendChild(card);
     });
   } else {
-    // matches view — include a global fallback so users can always discover created activities
-    const allMatches = state.activities.slice();
-    let matches = allMatches.slice();
+    // matches view — show user-created activities, with smart filtering
+    const allMatches = state.activities.filter(a => a.isUserCreated).slice();
 
     if (searchTerm) {
-      matches = matches.filter(a => a.title.toLowerCase().includes(searchTerm) || a.sport.toLowerCase().includes(searchTerm) || a.location.toLowerCase().includes(searchTerm));
+      allMatches = allMatches.filter(a => a.title.toLowerCase().includes(searchTerm) || a.sport.toLowerCase().includes(searchTerm) || a.location.toLowerCase().includes(searchTerm));
     }
-    matches = matches.filter(matchesCategory).filter(matchesCombat);
+    let matches = allMatches.filter(matchesCategory).filter(matchesCombat);
 
-    const candidateMatches = matches.map(a => {
-      if (state.userLocation && a.coords && a.coords.lat && a.coords.lng) {
-        const distance = calcDistance(state.userLocation.lat, state.userLocation.lng, a.coords.lat, a.coords.lng);
-        return { ...a, distance };
-      }
-      return { ...a, distance: null };
-    });
+    // Calculate distances if user has enabled location
+    if (state.userLocation) {
+      matches = matches.map(a => {
+        if (a.coords && a.coords.lat && a.coords.lng) {
+          const distance = calcDistance(state.userLocation.lat, state.userLocation.lng, a.coords.lat, a.coords.lng);
+          return { ...a, distance };
+        }
+        return { ...a, distance: null };
+      });
+    }
 
-    const nearbyMatches = candidateMatches.filter(a => !a.coords || a.distance === null || (a.distance && Number(a.distance) <= radiusKm));
-    const farMatches = candidateMatches.filter(a => a.coords && a.distance && Number(a.distance) > radiusKm);
+    // Primary: show matches within radius
+    const nearbyMatches = matches.filter(a => !a.coords || a.distance === null || (a.distance && Number(a.distance) <= radiusKm));
 
     let visibleMatches = nearbyMatches;
-    if (visibleMatches.length === 0 && farMatches.length > 0) {
-      visibleMatches = farMatches;
-      setDiscoverNotice(`No matches found within ${radiusKm} km. Showing ${farMatches.length} farther match(es).`);
-    } else if (visibleMatches.length === 0) {
+    if (visibleMatches.length === 0) {
       setDiscoverNotice('No matches found. Create one to get started!');
     } else {
       setDiscoverNotice('');
