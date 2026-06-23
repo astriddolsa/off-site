@@ -111,10 +111,9 @@ function applyCreatedActivities(createdActivities) {
   console.log('[OFF SITE DEBUG] BASE_ACTIVITIES count =', BASE_ACTIVITIES.length);
   console.log('[OFF SITE DEBUG] Normalized details:', normalizedCreated.map(a => ({ id: a.id, title: a.title, isUserCreated: a.isUserCreated, createdAt: a.createdAt ? 'YES' : 'NO' })));
 
-  state.activities = [
-    ...normalizedCreated,
-    ...BASE_ACTIVITIES
-  ];
+  // IMPORTANT: state.activities should ONLY contain user-created activities
+  // BASE_ACTIVITIES are separate and only shown in "Nearby Venues" view via Places API
+  state.activities = normalizedCreated;
   
   console.log('[OFF SITE DEBUG] Final state.activities count =', state.activities.length);
 
@@ -907,7 +906,7 @@ async function renderDiscover(filter, combatSubfilter = 'all') {
       (i % 2 === 0 ? col1 : col2).appendChild(card);
     });
   } else {
-    // matches view — show user-created activities, with smart filtering
+    // matches view — show all user-created activities (state.activities contains ONLY user activities now)
     console.log('[OFF SITE DEBUG] Total activities in state:', state.activities.length);
     console.log('[OFF SITE DEBUG] Activities breakdown:', state.activities.map((a, i) => ({
       id: a.id,
@@ -917,8 +916,8 @@ async function renderDiscover(filter, combatSubfilter = 'all') {
       index: i
     })));
     
-    const allMatches = state.activities.filter(a => a.isUserCreated).slice();
-    console.log('[OFF SITE DEBUG] After isUserCreated filter:', allMatches.length, 'matches');
+    let allMatches = state.activities.slice();
+    console.log('[OFF SITE DEBUG] Starting with all activities:', allMatches.length, 'matches');
 
     if (searchTerm) {
       allMatches = allMatches.filter(a => a.title.toLowerCase().includes(searchTerm) || a.sport.toLowerCase().includes(searchTerm) || a.location.toLowerCase().includes(searchTerm));
@@ -2058,10 +2057,10 @@ function persistUserSession() {
 
 function persistCreatedActivities() {
   try {
-    const createdActivities = state.activities.filter(activity => activity.isUserCreated);
-    console.log('[OFF SITE DEBUG] persistCreatedActivities: Filtering for isUserCreated from', state.activities.length, 'activities, found', createdActivities.length);
-    console.log('[OFF SITE DEBUG] Persisting to localStorage:', createdActivities.map(a => ({ id: a.id, title: a.title, createdAt: a.createdAt })));
-    localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(createdActivities));
+    // state.activities now ONLY contains user-created activities, no need to filter
+    console.log('[OFF SITE DEBUG] persistCreatedActivities: Saving', state.activities.length, 'activities');
+    console.log('[OFF SITE DEBUG] Persisting to localStorage:', state.activities.map(a => ({ id: a.id, title: a.title, createdAt: a.createdAt })));
+    localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(state.activities));
   } catch (error) {
     console.warn('[OFF SITE] Could not persist created activities:', error);
   }
