@@ -38,6 +38,13 @@ function initializeFirebase() {
     _firestoreDb = firebase.firestore();
     // Improve browser compatibility for real-time listeners.
     _firestoreDb.settings({ experimentalAutoDetectLongPolling: true, useFetchStreams: false });
+
+    if (firebase.auth && firebase.auth.Auth && firebase.auth.Auth.Persistence) {
+      firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((error) => {
+        console.warn('[OFF SITE] Could not set auth persistence:', error);
+      });
+    }
+
     return true;
   } catch (error) {
     console.warn('[OFF SITE] Firebase initialization failed:', error);
@@ -2067,6 +2074,12 @@ function completeSignIn(user, welcomeName) {
   navTo('discover');
 }
 
+function isSafariLikeBrowser() {
+  const ua = navigator.userAgent || '';
+  const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|FxiOS/i.test(ua);
+  return isSafari;
+}
+
 function authGoogle() {
   if (!window.firebase || !firebase.auth) {
     signInAsGuest('Google auth unavailable. Signed in as guest.');
@@ -2076,6 +2089,15 @@ function authGoogle() {
   if (!_googleProvider) {
     _googleProvider = new firebase.auth.GoogleAuthProvider();
     _googleProvider.setCustomParameters({ prompt: 'select_account' });
+  }
+
+  // Safari often blocks popup auth; redirect flow is more reliable there.
+  if (isSafariLikeBrowser()) {
+    firebase.auth().signInWithRedirect(_googleProvider).catch((redirectError) => {
+      console.warn('[OFF SITE] Google redirect sign-in failed:', redirectError);
+      signInAsGuest('Google login blocked. Signed in as guest.');
+    });
+    return;
   }
 
   firebase.auth().signInWithPopup(_googleProvider)
@@ -2095,8 +2117,13 @@ function authGoogle() {
         return;
       }
 
-      if (code === 'auth/operation-not-allowed' || code === 'auth/configuration-not-found' || code === 'auth/unauthorized-domain') {
-        showToast('Google login is not enabled yet in Firebase Auth. Use Email or Guest for now.');
+      if (code === 'auth/operation-not-allowed' || code === 'auth/configuration-not-found') {
+        showToast('Enable Google in Firebase Auth > Sign-in method, then try again.');
+        return;
+      }
+
+      if (code === 'auth/unauthorized-domain') {
+        showToast('Add this domain in Firebase Auth > Settings > Authorized domains.');
         return;
       }
 
@@ -2106,6 +2133,12 @@ function authGoogle() {
 
 function finalizeGoogleRedirectIfNeeded() {
   if (!window.firebase || !firebase.auth) return;
+
+  const current = firebase.auth().currentUser;
+  if (current) {
+    completeSignIn(current);
+    return;
+  }
 
   firebase.auth().getRedirectResult()
     .then((result) => {
