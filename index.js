@@ -1652,7 +1652,7 @@ function closeAuth(e) {
 let googleTokenClient = null;
 
 function authGoogle() {
-  const clientId = '446299428719-iblpkco9bbt90914vo3ji9nict1mr5kh.apps.googleusercontent.com';
+  const clientId = '446299428719-t6tovvng0u2rhi7jheub8pgd7f0brsku.apps.googleusercontent.com';
   if (!window.google || !google.accounts || !google.accounts.oauth2) {
     showToast('Google Sign-In is still loading. Try again in a second.');
     return;
