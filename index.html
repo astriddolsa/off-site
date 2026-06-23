@@ -57,6 +57,10 @@
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input type="text" placeholder="Search sports, locations..." id="searchInput">
     </div>
+    <div class="discover-location-cta" id="discoverLocationCta" style="display:none;">
+      <button class="discover-location-btn" type="button" onclick="requestUserLocation(true)">Enable Location</button>
+      <div class="discover-location-hint" id="discoverLocationHint">Use your location for nearby venues and accurate distances.</div>
+    </div>
   </div>
   <div class="filter-scroll" id="filterScroll">
     <button class="filter-chip active" data-filter="all">All</button>

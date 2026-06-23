@@ -197,6 +197,32 @@ body {
   font-weight: 400;
 }
 .search-bar input::placeholder { color: var(--text-tertiary); }
+.discover-location-cta {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.discover-location-btn {
+  width: 100%;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-xl);
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.discover-location-btn:hover {
+  opacity: 0.92;
+}
+.discover-location-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .filter-scroll {
   display: flex;
   gap: 8px;

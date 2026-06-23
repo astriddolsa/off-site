@@ -491,6 +491,22 @@ function setDiscoverRadius(value) {
   renderDiscover(filter, combatSubfilter);
 }
 
+function updateDiscoverLocationCta(hintText) {
+  const cta = document.getElementById('discoverLocationCta');
+  const hint = document.getElementById('discoverLocationHint');
+  if (!cta) return;
+
+  if (state.userLocation) {
+    cta.style.display = 'none';
+    return;
+  }
+
+  cta.style.display = 'flex';
+  if (hint && hintText) {
+    hint.textContent = hintText;
+  }
+}
+
 function renderDiscoverFilters(view) {
   const container = document.getElementById('filterScroll');
   if (!container) return;
@@ -586,6 +602,7 @@ function formatSpotsLabel(spots) {
 
 // ==================== DISCOVER ====================
 async function renderDiscover(filter, combatSubfilter = 'all') {
+  updateDiscoverLocationCta();
   const col1 = document.getElementById('col1');
   const col2 = document.getElementById('col2');
   col1.innerHTML = '';
@@ -1780,15 +1797,18 @@ function maybeShowLocationToast(message) {
 function requestUserLocation(showFeedback = false) {
   if (!window.isSecureContext) {
     if (showFeedback) maybeShowLocationToast('Location requires HTTPS on mobile browsers.');
+    updateDiscoverLocationCta('Location needs HTTPS and browser permission to show nearby venues.');
     return;
   }
   if (!navigator.geolocation) {
     if (showFeedback) maybeShowLocationToast('Location is not supported on this browser.');
+    updateDiscoverLocationCta('This browser does not support location access.');
     return;
   }
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       state.userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      updateDiscoverLocationCta();
       state.runningLocationSuggestions = [];
       if (document.getElementById('screen-discover')?.classList.contains('active')) {
         renderDiscover(document.querySelector('.filter-chip.active')?.dataset.filter);
@@ -1799,6 +1819,7 @@ function requestUserLocation(showFeedback = false) {
     },
     (err) => {
       console.log('[OFF SITE] Location denied:', err.message);
+      updateDiscoverLocationCta('Tap Enable Location and allow browser permission for nearby results.');
       if (!showFeedback) return;
       if (err.code === 1) {
         maybeShowLocationToast('Location is blocked. Enable it in your browser site settings.');
