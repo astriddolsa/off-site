@@ -452,6 +452,7 @@ function navTo(screen) {
 
   window.scrollTo(0, 0);
 
+  if (screen === 'discover' && !state.userLocation) requestUserLocation(true);
   if (screen === 'discover') renderDiscover();
   if (screen === 'saved') renderSaved();
   if (screen === 'profile') renderProfile();
@@ -471,6 +472,7 @@ function setDiscoverView(view) {
   if (v) v.classList.toggle('active', view === 'venues');
   if (m) m.classList.toggle('active', view === 'matches');
   renderDiscoverFilters(view);
+  if (!state.userLocation) requestUserLocation(true);
   renderDiscover();
 }
 
@@ -484,6 +486,7 @@ function setDiscoverRadius(value) {
   const radiusKm = Number(value);
   if (!Number.isFinite(radiusKm) || radiusKm <= 0) return;
   state.selectedRadiusKm = radiusKm;
+  if (!state.userLocation) requestUserLocation(true);
   const { filter, combatSubfilter } = getActiveDiscoverSelection();
   renderDiscover(filter, combatSubfilter);
 }
@@ -1765,8 +1768,24 @@ function showToast(msg) {
 }
 
 // ==================== LOCATION / GPS ====================
-function requestUserLocation() {
-  if (!navigator.geolocation) return;
+let lastLocationToastAt = 0;
+
+function maybeShowLocationToast(message) {
+  const now = Date.now();
+  if (now - lastLocationToastAt < 4000) return;
+  lastLocationToastAt = now;
+  showToast(message);
+}
+
+function requestUserLocation(showFeedback = false) {
+  if (!window.isSecureContext) {
+    if (showFeedback) maybeShowLocationToast('Location requires HTTPS on mobile browsers.');
+    return;
+  }
+  if (!navigator.geolocation) {
+    if (showFeedback) maybeShowLocationToast('Location is not supported on this browser.');
+    return;
+  }
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       state.userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -1780,6 +1799,14 @@ function requestUserLocation() {
     },
     (err) => {
       console.log('[OFF SITE] Location denied:', err.message);
+      if (!showFeedback) return;
+      if (err.code === 1) {
+        maybeShowLocationToast('Location is blocked. Enable it in your browser site settings.');
+      } else if (err.code === 2) {
+        maybeShowLocationToast('Could not detect your location. Check signal/GPS and try again.');
+      } else {
+        maybeShowLocationToast('Location request timed out. Try again.');
+      }
     },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
   );
