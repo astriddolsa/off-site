@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>OFF SITE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="./index.js" defer></script>
+<base target="_blank">
+</head>
+<body>
+<!-- COUNTRY ONBOARDING -->
+<div class="screen active" id="screen-country">
+  <div style="margin-bottom:48px;">
+    <div style="font-family:'Playfair Display', serif; font-size:42px; font-weight:700; letter-spacing:-1px; margin-bottom:8px;">OFF SITE</div>
+    <div style="font-size:15px; color:var(--text-secondary); font-weight:400;">Find your people. Play your sport.</div>
+  </div>
+  <div style="width:100%; max-width:340px;">
+    <div style="font-size:15px; font-weight:600; color:var(--text-primary); margin-bottom:8px; text-align:left;">Select your country to continue</div>
+    <div style="font-size:13px; color:var(--text-secondary); margin-bottom:20px; text-align:left;">This helps us show activities near you</div>
+    <div class="country-dropdown-wrap">
+      <select class="country-dropdown" id="countryDropdown">
+        <option value="" disabled selected>Choose a country...</option>
+      </select>
+      <svg class="country-dropdown-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <button class="country-continue-btn" id="countryContinue" onclick="confirmCountry()" disabled>Continue</button>
+  </div>
+</div>
+
+
+<!-- DISCOVER SCREEN -->
+<div class="screen" id="screen-discover">
+  <div class="discover-header">
+    <h1 class="discover-title">Discover</h1>
+    <p class="discover-subtitle">Find your next activity</p>
+    <div class="discover-tabs-row">
+      <div class="discover-tabs">
+        <button id="tab-venues" class="discover-tab active" onclick="setDiscoverView('venues')">Nearby Venues</button>
+        <button id="tab-matches" class="discover-tab" onclick="setDiscoverView('matches')">Current Matches</button>
+      </div>
+      <div class="discover-radius-wrap">
+        <label class="discover-radius-label" for="discoverRadius">Radius</label>
+        <select id="discoverRadius" class="discover-radius-select" onchange="setDiscoverRadius(this.value)">
+          <option value="2">2 km</option>
+          <option value="5" selected>5 km</option>
+          <option value="10">10 km</option>
+          <option value="25">25 km</option>
+          <option value="50">50 km</option>
+        </select>
+      </div>
+    </div>
+    <div class="search-bar">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" placeholder="Search sports, locations..." id="searchInput">
+    </div>
+  </div>
+  <div class="filter-scroll" id="filterScroll">
+    <button class="filter-chip active" data-filter="all">All</button>
+    <button class="filter-chip" data-filter="team">Team Sports</button>
+    <button class="filter-chip" data-filter="racket">Racket</button>
+    <button class="filter-chip" data-filter="water">Water</button>
+    <button class="filter-chip" data-filter="fitness">Fitness</button>
+    <button class="filter-chip" data-filter="outdoor">Outdoor</button>
+    <button class="filter-chip" data-filter="combat">Combat</button>
+  </div>
+  <div class="filter-scroll filter-scroll-secondary" id="combatFilterScroll" style="display:none;">
+    <button class="filter-chip active" data-combat="all">All</button>
+    <button class="filter-chip" data-combat="krav maga">Krav Maga</button>
+    <button class="filter-chip" data-combat="mma">MMA</button>
+    <button class="filter-chip" data-combat="jiu jitsu">Jiu Jitsu</button>
+    <button class="filter-chip" data-combat="boxing">Boxing</button>
+    <button class="filter-chip" data-combat="muay thai">Muay Thai</button>
+    <button class="filter-chip" data-combat="taekwondo">Taekwondo</button>
+    <button class="filter-chip" data-combat="other">Other</button>
+  </div>
+  <div class="masonry-grid" id="discoverGrid">
+    <div class="masonry-col" id="col1"></div>
+    <div class="masonry-col" id="col2"></div>
+  </div>
+</div>
+
+<!-- DETAIL SCREEN -->
+<div class="screen" id="screen-detail">
+  <div class="detail-hero" id="detailHero">
+    <img src="" alt="" id="detailImage">
+    <button class="detail-back" onclick="navTo('discover')">
+      <svg viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
+    </button>
+    <button class="detail-save" onclick="toggleSave()">
+      <svg viewBox="0 0 24 24" id="detailSaveIcon"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+    </button>
+    <div class="detail-hero-overlay">
+      <span class="detail-hero-tag" id="detailSport"></span>
+      <h1 class="detail-hero-title" id="detailTitle"></h1>
+    </div>
+  </div>
+  <div class="detail-content">
+    <div class="detail-section">
+      <div class="detail-info-row">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Date</div><div class="detail-info-value" id="detailDate"></div></div>
+      </div>
+      <div class="detail-info-row">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Time</div><div class="detail-info-value" id="detailTime"></div></div>
+      </div>
+      <div class="detail-info-row">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Location</div><div class="detail-info-value" id="detailLocation"></div></div>
+      </div>
+      <div class="detail-info-row">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><path d="M3 10h18v10H3z"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Opening Hours</div><div class="detail-info-value" id="detailHours">—</div></div>
+      </div>
+      <div class="detail-info-row">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><path d="M5 21c2-3 6-5 7-5s5 2 7 5"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Facilities</div><div class="detail-info-value" id="detailFacilities">—</div></div>
+      </div>
+      <div class="detail-info-row">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Contact</div><div class="detail-info-value" id="detailContact">—</div></div>
+      </div>
+      <div class="detail-info-row">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><path d="M12 2v6"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Reservations / Membership</div><div class="detail-info-value" id="detailReservation">—</div></div>
+      </div>
+      <div class="detail-info-note" id="detailAccessNote">Verify access terms with the venue.</div>
+      <div class="detail-info-row" id="detailSpotsRow">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Spots</div><div class="detail-info-value" id="detailSpots"></div></div>
+      </div>
+      <div class="detail-info-row" id="detailMapsRow" style="display:none;">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L17.18 21 12 17.77 6.82 21l1.09-6.88L3 9.27l6.91-1.01L12 2z"/></svg></div>
+        <div class="detail-info-text">
+          <div class="detail-info-label">Google Maps</div>
+          <div class="detail-info-value"><a id="detailMapsBtn" class="detail-link-chip" href="#" target="_blank">Open in Maps</a></div>
+        </div>
+      </div>
+      <div class="detail-info-row" id="detailSkillRow">
+        <div class="detail-info-icon"><svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
+        <div class="detail-info-text"><div class="detail-info-label">Skill Level</div><div class="detail-info-value" id="detailLevel"></div></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">About</div>
+      <p class="detail-description" id="detailDescription"></p>
+    </div>
+    <div class="detail-section" id="detailHostSection">
+      <div class="detail-section-title">Host</div>
+      <div class="detail-host">
+        <img src="" alt="" id="hostImage">
+        <div class="detail-host-info">
+          <div class="detail-host-name" id="hostName"></div>
+          <div class="detail-host-bio" id="hostBio"></div>
+        </div>
+        <button class="detail-host-follow" onclick="followHost()">Follow</button>
+      </div>
+    </div>
+    <div class="detail-section" id="detailParticipantsSection">
+      <div class="detail-section-title">Participants</div>
+      <div class="detail-participants" id="detailParticipants"></div>
+    </div>
+    <div class="detail-section" id="detailChatSection" style="display:none;">
+      <div class="detail-section-title">Activity Chat</div>
+      <div class="activity-chat" id="activityChat">
+        <div class="chat-messages" id="chatMessages" style="max-height:300px; overflow-y:auto; margin-bottom:12px;"></div>
+        <form class="chat-input-form" onsubmit="sendMessage(event)">
+          <input type="text" class="chat-input" id="chatMessageInput" placeholder="Say something..." required>
+          <button type="submit" class="chat-send">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M16.6915026,12.4744748 L3.50612381,13.2599618 C3.19218622,13.2599618 3.03521743,13.4170592 3.03521743,13.5741566 L1.15159189,20.0151496 C0.8376543,20.8006365 0.99,21.89 1.77946707,22.52 C2.41,22.99 3.50612381,23.1 4.13399899,22.9429026 L21.714504,14.0454487 C22.6563168,13.5741566 23.1272231,12.6315722 22.9702544,11.6889879 L4.13399899,1.01449287 C3.34915502,0.9 2.40734225,0.9 1.77946707,1.4429026 C0.994623095,2.10604706 0.837654326,3.0486314 1.15159189,3.98521575 L3.03521743,10.4262088 C3.03521743,10.5833061 3.19218622,10.7404035 3.50612381,10.7404035 L16.6915026,11.5258905 C16.6915026,11.5258905 17.1624089,11.5258905 17.1624089,12.0 C17.1624089,12.4744748 16.6915026,12.4744748 16.6915026,12.4744748 Z"/></svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="detail-cta">
+    <button class="detail-cta-btn" id="detailJoinBtn" onclick="joinActivity()">Join Activity</button>
+  </div>
+</div>
+
+<!-- CREATE SCREEN -->
+<div class="screen" id="screen-create">
+  <div class="create-header">
+    <button class="create-back" onclick="navTo('discover')">
+      <svg viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
+    </button>
+    <h1 class="create-title">Create Activity</h1>
+  </div>
+  <form class="create-form" onsubmit="handleCreate(event)">
+    <div class="form-group">
+      <label class="form-label">Sport</label>
+      <div class="sport-grid" id="sportGrid"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Title</label>
+      <input type="text" class="form-input" placeholder="e.g., Sunday Morning Basketball" required id="createTitle">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <textarea class="form-textarea" placeholder="What's the vibe? Who should join?" required id="createDesc"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-input" required id="createDate">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Time</label>
+        <input type="time" class="form-input" required id="createTime">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Duration (hrs)</label>
+        <input type="number" class="form-input" min="0.5" max="8" step="0.5" value="1" required id="createDuration">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" id="createLocationLabel">Location</label>
+      <input type="text" class="form-input" placeholder="Venue or address" required id="createLocation">
+      <datalist id="createLocationSuggestions"></datalist>
+      <div id="runningLocationHint" style="display:none; margin-top:8px; font-size:12px; color:var(--text-secondary);"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Skill Level</label>
+        <select class="form-select" id="createLevel">
+          <option>All Levels</option>
+          <option>Beginner</option>
+          <option>Intermediate</option>
+          <option>Advanced</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="createMaxLabel">Max Participants</label>
+        <input type="number" class="form-input" min="2" max="50" value="10" required id="createMax">
+        <label id="runningUnlimitedWrap" style="display:none; margin-top:8px; font-size:13px; color:var(--text-secondary);">
+          <input type="checkbox" id="createUnlimited" onchange="toggleUnlimitedSpots(this.checked)"> No limit
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Visibility</label>
+      <div class="visibility-options">
+        <div class="visibility-option selected" data-vis="public" onclick="selectVis(this)">
+          <span class="vis-icon">&#127760;</span>
+          <span class="vis-label">Public</span>
+          <span class="vis-desc">Anyone can join</span>
+        </div>
+        <div class="visibility-option" data-vis="private" onclick="selectVis(this)">
+          <span class="vis-icon">&#128274;</span>
+          <span class="vis-label">Private</span>
+          <span class="vis-desc">Invite only</span>
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="create-submit">Create Activity</button>
+  </form>
+</div>
+
+<!-- PROFILE SCREEN -->
+<div class="screen" id="screen-profile">
+  <div class="profile-header">
+    <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face" alt="Profile" class="profile-avatar" id="profileAvatar">
+    <h2 class="profile-name" id="profileName">Guest</h2>
+    <p class="profile-bio" id="profileBio">Join activities to build your profile</p>
+    <div class="profile-stats">
+      <div class="profile-stat"><div class="profile-stat-value" id="statJoined">0</div><div class="profile-stat-label">Joined</div></div>
+      <div class="profile-stat"><div class="profile-stat-value" id="statHosted">0</div><div class="profile-stat-label">Hosted</div></div>
+      <div class="profile-stat"><div class="profile-stat-value" id="statStreak">0</div><div class="profile-stat-label">Streak</div></div>
+    </div>
+    <button class="profile-edit-btn" onclick="showAuth()" id="profileBtn">Sign In</button>
+  </div>
+  <div class="profile-sports" id="profileSports"></div>
+  <div class="streak-card" id="streakCard" style="display:none">
+    <div class="streak-number" id="streakNumber">0</div>
+    <div class="streak-label">Week Streak</div>
+    <div class="streak-sub" id="streakSub">Keep it going!</div>
+  </div>
+  <div class="profile-tabs">
+    <button class="profile-tab active" data-tab="joined" onclick="switchTab(this)">Joined</button>
+    <button class="profile-tab" data-tab="hosted" onclick="switchTab(this)">Hosted</button>
+    <button class="profile-tab" data-tab="saved" onclick="switchTab(this)">Saved</button>
+    <button class="profile-tab" data-tab="connections" onclick="switchTab(this)">Connections</button>
+  </div>
+  <div class="profile-log-launcher">
+    <button class="profile-log-toggle" type="button" onclick="toggleManualLogForm()" id="manualLogToggle">Add activity</button>
+  </div>
+  <div class="profile-integrations manual-log-shell" id="manualLogShell" style="display:none;">
+    <div class="manual-log-card">
+      <div class="wearable-title">Daily activity log</div>
+      <p class="wearable-copy">Add workouts manually and the profile will summarize them by date. Each entry can stay private or be shared with your connections.</p>
+      <form class="manual-log-form" onsubmit="addManualActivity(event)">
+        <div class="manual-grid">
+          <label>
+            <span>Activity</span>
+            <select id="manualActivityType">
+            </select>
+          </label>
+          <label>
+            <span>Visibility</span>
+            <select id="manualVisibility">
+              <option value="private">Only me</option>
+              <option value="connections">Connections</option>
+            </select>
+          </label>
+          <label>
+            <span>Duration (min)</span>
+            <input id="manualDuration" type="number" min="0" placeholder="45">
+          </label>
+          <label>
+            <span>Distance (km)</span>
+            <input id="manualDistance" type="number" min="0" step="0.1" placeholder="5.0">
+          </label>
+          <label>
+            <span>Date</span>
+            <input id="manualActivityDate" type="date">
+          </label>
+        </div>
+        <label class="manual-media-field">
+          <span>Photos or videos</span>
+          <input id="manualMedia" type="file" accept="image/*,video/*" multiple>
+        </label>
+        <label class="manual-notes-field">
+          <span>Notes</span>
+          <textarea id="manualNotes" rows="3" placeholder="How did it feel?"></textarea>
+        </label>
+        <button class="profile-integration-btn" type="submit">Add activity</button>
+      </form>
+      <div class="manual-summary" id="manualSummary"></div>
+      <div class="manual-list" id="manualActivityList"></div>
+    </div>
+  </div>
+  <div class="profile-activities" id="profileActivities"></div>
+</div>
+
+<!-- SAVED SCREEN -->
+<div class="screen" id="screen-saved">
+  <div class="saved-header">
+    <h1 class="saved-title">Saved</h1>
+  </div>
+  <div class="saved-empty" id="savedEmpty">
+    <div class="saved-empty-icon">&#128278;</div>
+    <div class="saved-empty-title">No saved activities</div>
+    <div class="saved-empty-text">Save activities you are interested in to find them here</div>
+  </div>
+  <div class="masonry-grid" id="savedGrid" style="display:none; padding: 0 16px;">
+    <div class="masonry-col" id="savedCol1"></div>
+    <div class="masonry-col" id="savedCol2"></div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <button class="nav-item active" onclick="navTo('discover')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span class="nav-label">Discover</span>
+    </button>
+    <button class="nav-item" onclick="navTo('saved')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+      <span class="nav-label">Saved</span>
+    </button>
+    <button class="nav-item create-btn" onclick="navTo('create')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span class="nav-label">Create</span>
+    </button>
+    <button class="nav-item" onclick="navTo('profile')">
+      <svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="nav-label">Profile</span>
+    </button>
+  </div>
+</nav>
+
+<!-- AUTH MODAL -->
+<div class="modal-overlay" id="authModal" onclick="closeAuth(event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <h2 class="modal-title">Join OFF SITE</h2>
+    <p class="modal-subtitle">Sign in to create and join activities</p>
+    <button class="auth-btn" onclick="authGoogle()">
+      <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Continue with Google
+    </button>
+    <div class="auth-divider">or</div>
+    <form class="auth-email-form" onsubmit="authEmail(event)">
+      <input type="email" class="auth-input" placeholder="Email" required>
+      <input type="password" class="auth-input" placeholder="Password" required>
+      <button type="submit" class="auth-submit">Sign In with Email</button>
+    </form>
+    <button class="auth-btn" style="margin-top:16px" onclick="browseAnonymous()">Continue as Guest</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+
+</body>
+</html>
