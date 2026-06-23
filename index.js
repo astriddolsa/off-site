@@ -3,6 +3,97 @@
 const VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY="AIzaSyDg_s87-w7ARUVSaoyrDoxd_lNSIKaxea8"
 const VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_TRACKING_ID="66a32682faa1cf2628d20552f144b60a"
 
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyANazps_YoYbsvH_VxX9iSbmymJVPoUeLs",
+  authDomain: "off-site-f1887.firebaseapp.com",
+  projectId: "off-site-f1887",
+  storageBucket: "off-site-f1887.firebasestorage.app",
+  messagingSenderId: "352676481913",
+  appId: "1:352676481913:web:18d9c7a010d5df56d47da8",
+  measurementId: "G-G3Z6JQ4CK0"
+};
+
+let _firestoreDb = null;
+let _activitiesUnsubscribe = null;
+
+function initializeFirebase() {
+  if (!window.firebase) {
+    console.warn('[OFF SITE] Firebase SDK not loaded, using local storage fallback only.');
+    return false;
+  }
+
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    _firestoreDb = firebase.firestore();
+    return true;
+  } catch (error) {
+    console.warn('[OFF SITE] Firebase initialization failed:', error);
+    _firestoreDb = null;
+    return false;
+  }
+}
+
+function normalizeCreatedActivity(activity) {
+  const safe = activity && typeof activity === 'object' ? activity : {};
+  const numericId = Number(safe.id);
+  return {
+    ...safe,
+    id: Number.isFinite(numericId) ? numericId : Date.now(),
+    isUserCreated: true,
+    image: getSportImage(safe.sport),
+    participants: Array.isArray(safe.participants) ? safe.participants : []
+  };
+}
+
+function applyCreatedActivities(createdActivities) {
+  const normalizedCreated = Array.isArray(createdActivities)
+    ? createdActivities.map(normalizeCreatedActivity)
+    : [];
+
+  state.activities = [
+    ...normalizedCreated,
+    ...BASE_ACTIVITIES
+  ];
+
+  if (document.getElementById('screen-discover')?.classList.contains('active')) {
+    renderDiscover(document.querySelector('.filter-chip.active')?.dataset.filter, state.selectedCombat || 'all');
+  }
+  if (document.getElementById('screen-profile')?.classList.contains('active')) {
+    renderProfile();
+  }
+}
+
+function startSharedActivitiesSync() {
+  if (!_firestoreDb) return;
+
+  if (typeof _activitiesUnsubscribe === 'function') {
+    _activitiesUnsubscribe();
+  }
+
+  _activitiesUnsubscribe = _firestoreDb
+    .collection('activities')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot((snapshot) => {
+      const cloudActivities = snapshot.docs.map(doc => normalizeCreatedActivity(doc.data()));
+      applyCreatedActivities(cloudActivities);
+      localStorage.setItem(STORAGE_KEYS.createdActivities, JSON.stringify(cloudActivities));
+    }, (error) => {
+      console.warn('[OFF SITE] Firestore sync failed, using local data:', error);
+    });
+}
+
+async function saveCreatedActivityToCloud(activity) {
+  if (!_firestoreDb || !activity || !activity.id) return;
+
+  try {
+    await _firestoreDb.collection('activities').doc(String(activity.id)).set(activity, { merge: true });
+  } catch (error) {
+    console.warn('[OFF SITE] Could not save activity to Firestore:', error);
+  }
+}
+
 // Load Google Maps JS API (Places library) dynamically for client-side Places lookups
 let _placesServiceReady = false;
 let _placesService = null;
@@ -1318,6 +1409,7 @@ async function handleCreate(e) {
 
   state.activities.unshift(newAct);
   persistCreatedActivities();
+  saveCreatedActivityToCloud(newAct);
   showToast('Activity created!');
   e.target.reset();
   document.querySelectorAll('.sport-option').forEach(o => o.classList.remove('selected'));
@@ -1899,18 +1991,11 @@ function loadPersistedSession() {
   try {
     const storedCreatedActivities = localStorage.getItem(STORAGE_KEYS.createdActivities);
     const parsedCreatedActivities = storedCreatedActivities ? JSON.parse(storedCreatedActivities) : [];
-    // Fix images for any activities loaded from localStorage — ensure they match the sport
-    const createdActivities = Array.isArray(parsedCreatedActivities) ? parsedCreatedActivities.map(act => ({
-      ...act,
-      image: getSportImage(act.sport)
-    })) : [];
-    state.activities = [
-      ...createdActivities,
-      ...BASE_ACTIVITIES
-    ];
+    const createdActivities = Array.isArray(parsedCreatedActivities) ? parsedCreatedActivities : [];
+    applyCreatedActivities(createdActivities);
   } catch (error) {
     console.warn('[OFF SITE] Could not restore created activities:', error);
-    state.activities = [...BASE_ACTIVITIES];
+    applyCreatedActivities([]);
   }
 }
 
@@ -2085,6 +2170,8 @@ if (radiusSelect) radiusSelect.value = String(state.selectedRadiusKm || 5);
 
 // ==================== INIT ====================
 loadPersistedSession();
+initializeFirebase();
+startSharedActivitiesSync();
 loadManualActivities();
 checkCountry();
 requestUserLocation();
