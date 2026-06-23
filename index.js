@@ -57,10 +57,12 @@ function initializeFirebase() {
 function normalizeCreatedActivity(activity) {
   const safe = activity && typeof activity === 'object' ? activity : {};
   const numericId = Number(safe.id);
+  // Only mark as user-created if it has a createdAt timestamp (real user activities do)
+  const isRealUserActivity = safe.createdAt && String(safe.createdAt).trim() !== '';
   return {
     ...safe,
     id: Number.isFinite(numericId) ? numericId : Date.now(),
-    isUserCreated: true,
+    isUserCreated: isRealUserActivity,
     image: getSportImage(safe.sport),
     participants: Array.isArray(safe.participants) ? safe.participants : []
   };
